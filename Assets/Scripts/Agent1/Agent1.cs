@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Linq;
 using TMPro;
+using Unity.VisualScripting;
 using UnityEngine;
 
 public class Agent1 : MonoBehaviour
@@ -8,17 +9,19 @@ public class Agent1 : MonoBehaviour
     [SerializeField] GameObject Player;
     [SerializeField] GameObject Obstacle;
     [SerializeField] GameObject Goal;
+    [SerializeField] GameObject Checkpoint;
     [SerializeField] TMP_Text epochDisplay;
 
     float playerSpeed = 5;
-    float jumpHeight = 5;
+    float jumpHeight = 6;
 
     float gamma = 0.9f;
     int numEpisodes = 1000;
-    float epsilon = .2f;
+    float epsilon = 1f;
 
     bool hitGoal = false;
     bool hitObstacle = false;
+    bool hitCheckPoint = false;
 
     int trainedEpochs = 0;
     NNModel model;
@@ -29,11 +32,11 @@ public class Agent1 : MonoBehaviour
 
     void Start()
     {
-        Time.timeScale = 7;
+        Time.timeScale = 10;
         model = NetworkBuilder.Create()
             .Stack(new InputLayer(2))
-            .Stack(new DenseLayer(8, ActivationType.Relu))
-            .Stack(new OutputLayer(1, ActivationType.Softmax))
+            .Stack(new DenseLayer(100, ActivationType.Softmax))
+            .Stack(new OutputLayer(2, ActivationType.Softmax))
             .Build(false);
 
         initialPlayerPosition = Player.transform.position;
@@ -41,14 +44,19 @@ public class Agent1 : MonoBehaviour
         StartCoroutine(TrainModel());
     }
 
-    int ArgsMax(float[] items)
+    int ArgsMaxIndex(float[] items)
     {
         return System.Array.IndexOf(items, items.Max());
     }
 
+    float ArgsMax(float[] items)
+    {
+        return items.Max();
+    }
+
     void ReduceEpsilon()
     {
-        if (epsilon > 0.05f)
+        if (epsilon > 0.1f)
             epsilon -= 0.005f;
     }
 
@@ -74,8 +82,9 @@ public class Agent1 : MonoBehaviour
                 }
                 else
                 {
-                    float[] res = model.FeedForward(state);
-                    action = ArgsMax(res);
+                    var pred = model.FeedForward(state);
+                    action = ArgsMaxIndex(pred);
+                    Debug.Log(pred[0] + ":" + pred[1]);
                 }
 
                 // Execute the action
@@ -87,30 +96,36 @@ public class Agent1 : MonoBehaviour
                 // Check for goal and obstacle conditions
                 if (hitGoal)
                 {
-                    reward = 20.0f;
+                    reward = 1.0f;
                     successfull++;
                     epsilon = Mathf.Max(epsilon - 0.1f, 0.01f); // Clamp epsilon to a minimum
                     hitGoal = false;
                 }
                 else if (hitObstacle)
                 {
-                    reward = -20.0f;
+                    reward = -1f;
                     failed++;
                     hitObstacle = false;
                 }
-
+                //else if (hitCheckPoint)
+                //{
+                //    Debug.Log("!Hit checkpoint");
+                //    reward = 2;
+                //    hitCheckPoint = false;
+                //}
 
                 // Retrain the model when the reward is not 0
                 if (reward != 0)
                 {
                     float maxQValueNext = ArgsMax(model.FeedForward(state));
                     float qTarget = reward + gamma * maxQValueNext;
+
                     float[] qValues = model.FeedForward(state);
-
                     qValues[action] = qTarget;
-                    model.Train(state, qValues, 0.1f);
 
-                    epochDisplay.text = $"Epochs: {trainedEpochs++}\nReward: {reward}\nPassed: {successfull}\nP/F: {(failed == 0 ? "0" : (successfull / failed).ToString())}";
+                    model.Train(state, qValues, 0.05f);
+
+                    epochDisplay.text = $"Epochs: {trainedEpochs++}\nReward: {reward}\nPassed: {successfull}\nFailed: {failed}\nTarget: {qTarget}\nQNext: {maxQValueNext}";
 
                     if (done)
                     {
@@ -159,13 +174,11 @@ public class Agent1 : MonoBehaviour
         // Detect collision with goal or obstacle
         if (collision.gameObject == Goal)
         {
-            Debug.Log("HIT GOAL");
             hitGoal = true;
             done = true;
         }
         else if (collision.gameObject == Obstacle)
         {
-            Debug.Log("HIT OBstacle");
             hitObstacle = true;
             done = true;
         }
@@ -174,6 +187,14 @@ public class Agent1 : MonoBehaviour
         if (collision.gameObject.CompareTag("Ground"))
         {
             isGrounded = true;
+        }
+    }
+
+    private void OnTriggerEnter(Collider other)
+    {
+        if (other == Checkpoint)
+        {
+            hitCheckPoint = true;
         }
     }
 
