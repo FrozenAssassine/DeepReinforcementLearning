@@ -1107,9 +1107,7 @@ MonoBehaviour:
   Player: {fileID: 1892165743}
   Obstacle: {fileID: 224386988}
   Goal: {fileID: 1356583960}
-  Checkpoint: {fileID: 108046371}
   epochDisplay: {fileID: 2072462162}
-  epsilonDisplay: {fileID: 0}
 --- !u!1 &2072462160
 GameObject:
   m_ObjectHideFlags: 0
