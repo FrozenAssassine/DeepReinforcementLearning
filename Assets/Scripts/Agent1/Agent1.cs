@@ -15,7 +15,7 @@ public class Agent1 : MonoBehaviour
 
     float gamma = 0.9f;
     int numEpisodes = 1000;
-    float epsilon = 0.1f;
+    float epsilon = .2f;
 
     bool hitGoal = false;
     bool hitObstacle = false;
@@ -24,17 +24,16 @@ public class Agent1 : MonoBehaviour
     NNModel model;
     bool done = false;
     Vector3 initialPlayerPosition;
-
-    float didNothingCount = 0;
+    int successfull = 0;
+    int failed = 0;
 
     void Start()
     {
-        //Time.timeScale = 10;
+        Time.timeScale = 7;
         model = NetworkBuilder.Create()
-            .Stack(new InputLayer(2))                   // Input Layer with 2 inputs
-            .Stack(new DenseLayer(8, ActivationType.Relu)) // First Hidden Layer with 8 neurons
-            .Stack(new DenseLayer(4, ActivationType.Relu)) // Second Hidden Layer with 4 neurons
-            .Stack(new OutputLayer(3, ActivationType.Softmax)) // Output Layer with 3 outputs
+            .Stack(new InputLayer(2))
+            .Stack(new DenseLayer(8, ActivationType.Relu))
+            .Stack(new OutputLayer(1, ActivationType.Softmax))
             .Build(false);
 
         initialPlayerPosition = Player.transform.position;
@@ -47,115 +46,96 @@ public class Agent1 : MonoBehaviour
         return System.Array.IndexOf(items, items.Max());
     }
 
+    void ReduceEpsilon()
+    {
+        if (epsilon > 0.05f)
+            epsilon -= 0.005f;
+    }
+
     IEnumerator TrainModel()
     {
         for (int episode = 0; episode < numEpisodes; episode++)
         {
             bool isEpisodeDone = false;
+            bool done = false;
 
             while (!isEpisodeDone)
             {
-                // Calculate the current state based on the actual environment
                 float distanceToObstacle = Player.transform.position.x - Obstacle.transform.position.x;
-                float velocity = Player.GetComponent<Rigidbody>().velocity.x;
+                float velocity = Player.GetComponent<Rigidbody>().velocity.y;
                 float[] state = { distanceToObstacle, velocity };
                 float reward = 0;
 
-                // Choose action based on epsilon-greedy strategy
+                // Predict or generate random action
                 int action;
                 if (Random.value < epsilon)
                 {
-                    action = Random.Range(0, 3);  // Random action
+                    action = Random.Range(0, 2); // Random action
                 }
-
                 else
                 {
                     float[] res = model.FeedForward(state);
                     action = ArgsMax(res);
-                    Debug.Log("Prediction: " + action);
                 }
 
-                if(Player.GetComponent<Rigidbody>().velocity.x == 0)
+                // Execute the action
+                if (action == 1) // Jump
                 {
-                    didNothingCount++;
-                    if (didNothingCount > 100)
-                    {
-                        didNothingCount = 0;
-                        reward = -1;
-                    }
+                    JumpPlayer();
                 }
 
-                // Perform actions based on the chosen action
-                switch (action)
-                {
-                    case 0:
-                        //do nothing:
-                        break;
-                    case 1:
-                        MovePlayer();
-                        break;
-                    case 2: // Jump
-                        JumpPlayer();
-                        break;
-                }
-
-
+                // Check for goal and obstacle conditions
                 if (hitGoal)
                 {
-                    reward = 1.0f;  // Positive reward for reaching the goal
-                    hitGoal = false;  // Reset flag
+                    reward = 20.0f;
+                    successfull++;
+                    epsilon = Mathf.Max(epsilon - 0.1f, 0.01f); // Clamp epsilon to a minimum
+                    hitGoal = false;
                 }
                 else if (hitObstacle)
                 {
-                    reward = -1.0f;  // Negative reward for hitting an obstacle
-                    hitObstacle = false;  // Reset flag
+                    reward = -20.0f;
+                    failed++;
+                    hitObstacle = false;
                 }
 
+
+                // Retrain the model when the reward is not 0
                 if (reward != 0)
                 {
-                    Debug.Log("REWARD: " + reward);
-
-                    // Get Q-values for the next state
-                    float[] qValuesNext = model.FeedForward(state);
-                    float maxQValueNext = qValuesNext[0];
-
-                    // Calculate target Q-value
+                    float maxQValueNext = ArgsMax(model.FeedForward(state));
                     float qTarget = reward + gamma * maxQValueNext;
-
-                    // Get Q-values for the current state and update the chosen action
                     float[] qValues = model.FeedForward(state);
+
                     qValues[action] = qTarget;
-
-                    // Train the model
                     model.Train(state, qValues, 0.1f);
-                    epochDisplay.text = "Epochs: " + trainedEpochs++;
 
-                    // End episode if done
+                    epochDisplay.text = $"Epochs: {trainedEpochs++}\nReward: {reward}\nPassed: {successfull}\nP/F: {(failed == 0 ? "0" : (successfull / failed).ToString())}";
+
                     if (done)
                     {
                         isEpisodeDone = true;
-                        done = false;  // Reset flag for next episode
+                        done = false;
                     }
                 }
 
-                yield return null;  // Wait for the next frame
+                yield return null;
             }
 
-            // Reset the player for the next episode
-            ResetPlayer(initialPlayerPosition);
+            ResetPlayer(initialPlayerPosition); 
         }
     }
 
     void ResetPlayer(Vector3 homePosition)
     {
-        // Reset player position and velocity
+        ReduceEpsilon();
+
         Player.transform.position = homePosition;
         Player.GetComponent<Rigidbody>().velocity = Vector3.zero;
     }
 
     void MovePlayer()
     {
-        // Move the player continuously to the left
         Player.transform.Translate(Vector3.left * playerSpeed * Time.deltaTime);
     }
 
@@ -190,7 +170,7 @@ public class Agent1 : MonoBehaviour
             done = true;
         }
 
-        // Detect collision with ground (for jumping)
+        // Detect collision with ground for jumping
         if (collision.gameObject.CompareTag("Ground"))
         {
             isGrounded = true;
@@ -199,9 +179,10 @@ public class Agent1 : MonoBehaviour
 
     void Update()
     {
+        MovePlayer();
         if (done)
         {
-            done = false;  // Reset for next episode
+            done = false;
             ResetPlayer(initialPlayerPosition);
         }
     }
