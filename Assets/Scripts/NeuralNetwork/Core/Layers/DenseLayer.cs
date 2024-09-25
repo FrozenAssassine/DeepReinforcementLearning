@@ -69,6 +69,6 @@ public class DenseLayer : BaseLayer
 
     public override void InitializeCuda(int index)
     {
-        CudaAccel.InitDenseLayer(index, this.PreviousLayer.Size, this.Size, this.Biases, this.Weights, this.NeuronValues, this.Errors, this.ActivationFunction);
+        //CudaAccel.InitDenseLayer(index, this.PreviousLayer.Size, this.Size, this.Biases, this.Weights, this.NeuronValues, this.Errors, this.ActivationFunction);
     }
 }

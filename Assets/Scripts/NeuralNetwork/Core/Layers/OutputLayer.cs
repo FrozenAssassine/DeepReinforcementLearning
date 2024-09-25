@@ -68,6 +68,6 @@ public class OutputLayer : BaseLayer
 
     public override void InitializeCuda(int index)
     {
-        CudaAccel.InitOutputLayer(index, this.PreviousLayer.Size, this.Size, this.Biases, this.Weights, this.NeuronValues, this.Errors, this.ActivationFunction);
+        //CudaAccel.InitOutputLayer(index, this.PreviousLayer.Size, this.Size, this.Biases, this.Weights, this.NeuronValues, this.Errors, this.ActivationFunction);
     }
 }

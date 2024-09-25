@@ -20,7 +20,7 @@ public class InputLayer : BaseLayer
 
     public override void InitializeCuda(int index)
     {
-        CudaAccel.InitInputLayer(index, this.Size, this.Biases, this.Weights, this.NeuronValues, this.Errors, this.ActivationFunction);
+        //CudaAccel.InitInputLayer(index, this.Size, this.Biases, this.Weights, this.NeuronValues, this.Errors, this.ActivationFunction);
     }
 
     public override void Load(BinaryReader br)
