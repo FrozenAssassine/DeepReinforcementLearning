@@ -1,7 +1,6 @@
 using System.Collections;
 using System.Linq;
 using TMPro;
-using Unity.VisualScripting;
 using UnityEngine;
 
 public class Agent1 : MonoBehaviour
@@ -32,10 +31,10 @@ public class Agent1 : MonoBehaviour
 
     void Start()
     {
-        Time.timeScale = 10;
+        Time.timeScale = 2;
         model = NetworkBuilder.Create()
             .Stack(new InputLayer(2))
-            .Stack(new DenseLayer(100, ActivationType.Softmax))
+            .Stack(new DenseLayer(50, ActivationType.Softmax))
             .Stack(new OutputLayer(2, ActivationType.Softmax))
             .Build(false);
 
