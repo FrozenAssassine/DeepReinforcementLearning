@@ -1,46 +1,78 @@
 using System.Collections;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using TMPro;
 using UnityEngine;
 
+enum RunningState
+{
+    Train, Test, Pause
+}
+
 public class Agent1 : MonoBehaviour
 {
+    [SerializeField]float playerSpeed = 5;
+    [SerializeField] float jumpHeight = 6;
+    [SerializeField] float epsilonReductionRate = 0.001f;
+    [SerializeField] float epsilon = 1f;
+    [SerializeField] float epsilonMin = 0.01f;
+    [SerializeField] float gamma = 0.9f;
+    [SerializeField] int numEpisodes = 1000;
+
     [SerializeField] GameObject Player;
     [SerializeField] GameObject Obstacle;
     [SerializeField] GameObject Goal;
     [SerializeField] GameObject Checkpoint;
-    [SerializeField] TMP_Text epochDisplay;
+    [SerializeField] GameObject Floor;
+    [SerializeField] TMP_Text overviewDisplay;
+    [SerializeField] TMP_Text epsilonDisplay;
 
-    float playerSpeed = 5;
-    float jumpHeight = 6;
-
-    float gamma = 0.9f;
-    int numEpisodes = 1000;
-    float epsilon = 1f;
-
+    RunningState runningState = RunningState.Train;
     bool hitGoal = false;
     bool hitObstacle = false;
     bool hitCheckPoint = false;
-
     int trainedEpochs = 0;
     NNModel model;
     bool done = false;
     Vector3 initialPlayerPosition;
-    int successfull = 0;
-    int failed = 0;
+    int passedCount = 0;
+    int failedCount = 0;
+    int jumpCount = 0;
+    float passedFailedRatio = 0.0f;
 
     void Start()
     {
-        Time.timeScale = 2;
+        Time.timeScale = 5;
         model = NetworkBuilder.Create()
-            .Stack(new InputLayer(2))
-            .Stack(new DenseLayer(50, ActivationType.Softmax))
-            .Stack(new OutputLayer(2, ActivationType.Softmax))
+            .Stack(new InputLayer(4))
+            .Stack(new DenseLayer(12, ActivationType.Sigmoid))
+            .Stack(new OutputLayer(2, ActivationType.Sigmoid))
             .Build(false);
 
         initialPlayerPosition = Player.transform.position;
 
         StartCoroutine(TrainModel());
+    }
+
+    public void LoadWeights()
+    {
+        model.Load("C:\\Users\\juliu\\desktop\\weights.cool");
+    }
+    public void SaveWeights()
+    {
+        model.Save("C:\\Users\\juliu\\desktop\\weights.cool");
+    }
+
+    float oldTimeScale = 0;
+    public void PauseResume()
+    {
+        if (Time.timeScale == 0)
+            Time.timeScale = oldTimeScale;
+        else
+        {
+            oldTimeScale = Time.timeScale;
+            Time.timeScale = 0;
+        }
     }
 
     int ArgsMaxIndex(float[] items)
@@ -55,9 +87,28 @@ public class Agent1 : MonoBehaviour
 
     void ReduceEpsilon()
     {
-        if (epsilon > 0.1f)
-            epsilon -= 0.005f;
+        //drastically reduce:
+        if(passedFailedRatio < 0)
+            epsilon += (passedFailedRatio / 5);
+
+        if (epsilon > epsilonMin)
+        {
+            epsilon = Mathf.Clamp(epsilon + epsilonReductionRate * trainedEpochs, epsilonMin, 1);
+            epsilonDisplay.text = $"Epsilon: {epsilon}";
+        }
     }
+
+    void ResetPlayer(Vector3 homePosition)
+    {
+        ReduceEpsilon();
+        Player.transform.position = homePosition;
+        Player.GetComponent<Rigidbody>().velocity = Vector3.zero;
+    }
+    void MovePlayer()
+    {
+        Player.transform.Translate(Vector3.left * playerSpeed * Time.deltaTime);
+    }
+
 
     IEnumerator TrainModel()
     {
@@ -69,62 +120,74 @@ public class Agent1 : MonoBehaviour
             while (!isEpisodeDone)
             {
                 float distanceToObstacle = Player.transform.position.x - Obstacle.transform.position.x;
-                float velocity = Player.GetComponent<Rigidbody>().velocity.y;
-                float[] state = { distanceToObstacle, velocity };
+                float height = Player.transform.position.y - Floor.transform.position.y;
+                float[] state = { distanceToObstacle / 10.0f, height / (jumpHeight / 2.0f), (Time.time - lastJumpTime) / 2.0f, jumpCount == 0 ? 0.0f : jumpCount / 4.0f };
                 float reward = 0;
+                passedFailedRatio = failedCount - passedCount;
 
-                // Predict or generate random action
+                //predict or generate random action
                 int action;
-                if (Random.value < epsilon)
+                if (runningState == RunningState.Train)
                 {
-                    action = Random.Range(0, 2); // Random action
+                    if (Random.value < epsilon)
+                    {
+                        action = Random.Range(0, 2);
+                        Debug.Log("RANDOM NUMBER");
+                    }
+                    else
+                    {
+                        var pred = model.FeedForward(state);
+                        action = ArgsMaxIndex(pred);
+                    }
                 }
-                else
+                else // test state:
                 {
                     var pred = model.FeedForward(state);
                     action = ArgsMaxIndex(pred);
-                    Debug.Log(pred[0] + ":" + pred[1]);
                 }
 
-                // Execute the action
+                //execute the action:
                 if (action == 1) // Jump
-                {
                     JumpPlayer();
-                }
 
-                // Check for goal and obstacle conditions
+                //check for goal and obstacle conditions
                 if (hitGoal)
                 {
-                    reward = 1.0f;
-                    successfull++;
-                    epsilon = Mathf.Max(epsilon - 0.1f, 0.01f); // Clamp epsilon to a minimum
+                    reward = (1 / state[3]) / 10; //more jumps lower reward
+                    passedCount++;
                     hitGoal = false;
                 }
                 else if (hitObstacle)
                 {
                     reward = -1f;
-                    failed++;
+                    failedCount++;
                     hitObstacle = false;
                 }
-                //else if (hitCheckPoint)
-                //{
-                //    Debug.Log("!Hit checkpoint");
-                //    reward = 2;
-                //    hitCheckPoint = false;
-                //}
 
-                // Retrain the model when the reward is not 0
+                //retrain the model when the reward is not 0
                 if (reward != 0)
                 {
+                    Debug.Log("Train with: Height: " + state[1] + " Distance: " + state[0] + "Lastjump: " + state[2] + "Jumpcount: " + state[3]);
+
                     float maxQValueNext = ArgsMax(model.FeedForward(state));
                     float qTarget = reward + gamma * maxQValueNext;
 
                     float[] qValues = model.FeedForward(state);
                     qValues[action] = qTarget;
 
-                    model.Train(state, qValues, 0.05f);
+                    if (runningState == RunningState.Train)
+                        model.Train(state, qValues, 0.05f);
 
-                    epochDisplay.text = $"Epochs: {trainedEpochs++}\nReward: {reward}\nPassed: {successfull}\nFailed: {failed}\nTarget: {qTarget}\nQNext: {maxQValueNext}";
+                    overviewDisplay.text = $"Epochs: {trainedEpochs++}\nReward: {reward}\nPassed: {passedCount}\nFailed: {failedCount}\nTarget: {qTarget}\nQNext: {maxQValueNext}\nAction: {action}\nP/F: {passedFailedRatio}";
+
+                    //if(epsilon > epsilonMin)  //no more training -> prevent overfitting
+                    //if (trainedEpochs > 5)
+                    //    runningState = RunningState.Test;
+
+                    //reset variables:
+                    jumpCount = 0;
+                    state[3] = 0;
+                    lastJumpTime = Time.time; //only log the time in the current session:
 
                     if (done)
                     {
@@ -140,28 +203,15 @@ public class Agent1 : MonoBehaviour
         }
     }
 
-    void ResetPlayer(Vector3 homePosition)
-    {
-        ReduceEpsilon();
-
-        Player.transform.position = homePosition;
-        Player.GetComponent<Rigidbody>().velocity = Vector3.zero;
-    }
-
-    void MovePlayer()
-    {
-        Player.transform.Translate(Vector3.left * playerSpeed * Time.deltaTime);
-    }
-
     bool isGrounded;
     float jumpCooldown = 1.0f;
     float lastJumpTime;
-
     void JumpPlayer()
     {
-        // Jump only if the player is grounded and not in cooldown
+        //jump only if the player is grounded and not in cooldown
         if (isGrounded && Time.time - lastJumpTime > jumpCooldown)
         {
+            jumpCount++;
             Player.GetComponent<Rigidbody>().AddForce(Vector3.up * jumpHeight, ForceMode.Impulse);
             isGrounded = false;
             lastJumpTime = Time.time;
@@ -170,7 +220,7 @@ public class Agent1 : MonoBehaviour
 
     void OnCollisionEnter(Collision collision)
     {
-        // Detect collision with goal or obstacle
+        //detect collision with goal or obstacle
         if (collision.gameObject == Goal)
         {
             hitGoal = true;
@@ -182,7 +232,7 @@ public class Agent1 : MonoBehaviour
             done = true;
         }
 
-        // Detect collision with ground for jumping
+        //detect collision with ground for jumping
         if (collision.gameObject.CompareTag("Ground"))
         {
             isGrounded = true;
