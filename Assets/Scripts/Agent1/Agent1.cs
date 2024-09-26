@@ -74,30 +74,26 @@ public class Agent1 : MonoBehaviour
             Time.timeScale = 0;
         }
     }
-
     int ArgsMaxIndex(float[] items)
     {
         return System.Array.IndexOf(items, items.Max());
     }
-
     float ArgsMax(float[] items)
     {
         return items.Max();
     }
-
     void ReduceEpsilon()
     {
-        //drastically reduce:
-        if(passedFailedRatio < 0)
-            epsilon += (passedFailedRatio / 5);
+        ////drastically reduce:
+        //if(passedFailedRatio < 0 && trainedEpochs > 5)
+        //    epsilon += (passedFailedRatio / 5);
 
         if (epsilon > epsilonMin)
         {
-            epsilon = Mathf.Clamp(epsilon + epsilonReductionRate * trainedEpochs, epsilonMin, 1);
-            epsilonDisplay.text = $"Epsilon: {epsilon}";
+            epsilon = Mathf.Clamp(epsilon - epsilonReductionRate * trainedEpochs, epsilonMin, 1);
+            epsilonDisplay.text = $"{runningState}\nEpsilon: {epsilon}";
         }
     }
-
     void ResetPlayer(Vector3 homePosition)
     {
         ReduceEpsilon();
@@ -108,7 +104,6 @@ public class Agent1 : MonoBehaviour
     {
         Player.transform.Translate(Vector3.left * playerSpeed * Time.deltaTime);
     }
-
 
     IEnumerator TrainModel()
     {
@@ -153,13 +148,13 @@ public class Agent1 : MonoBehaviour
                 //check for goal and obstacle conditions
                 if (hitGoal)
                 {
-                    reward = (1 / state[3]) / 10; //more jumps lower reward
+                    reward = (1 / state[3]) / 20; //more jumps lower reward
                     passedCount++;
                     hitGoal = false;
                 }
                 else if (hitObstacle)
                 {
-                    reward = -1f;
+                    reward = jumpCount == 0 ? -1f : -0.5f;
                     failedCount++;
                     hitObstacle = false;
                 }
@@ -179,11 +174,11 @@ public class Agent1 : MonoBehaviour
                         model.Train(state, qValues, 0.05f);
 
                     overviewDisplay.text = $"Epochs: {trainedEpochs++}\nReward: {reward}\nPassed: {passedCount}\nFailed: {failedCount}\nTarget: {qTarget}\nQNext: {maxQValueNext}\nAction: {action}\nP/F: {passedFailedRatio}";
-
-                    //if(epsilon > epsilonMin)  //no more training -> prevent overfitting
-                    //if (trainedEpochs > 5)
+                    //if(trainedEpochs > 4)
+                    //{
                     //    runningState = RunningState.Test;
-
+                    //}
+                    
                     //reset variables:
                     jumpCount = 0;
                     state[3] = 0;

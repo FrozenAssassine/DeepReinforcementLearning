@@ -403,7 +403,7 @@ Transform:
   m_GameObject: {fileID: 224386988}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -4.3, y: 0.49, z: 0}
+  m_LocalPosition: {x: -1.79, y: 0.05, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 3.2394}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -720,13 +720,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 539441754}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.40821788, y: -0.23456968, z: 0.10938163, w: 0.8754261}
+  m_LocalRotation: {x: 0.348833, y: -0.5116424, z: 0.23858273, w: 0.7480748}
   m_LocalPosition: {x: 0, y: 3, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 50, y: -30, z: 0}
+  m_LocalEulerAnglesHint: {x: 50, y: -68.74, z: 0}
 --- !u!1 &630366370
 GameObject:
   m_ObjectHideFlags: 0
@@ -1640,11 +1640,11 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1892165748}
+  - component: {fileID: 1892165749}
   - component: {fileID: 1892165747}
   - component: {fileID: 1892165746}
   - component: {fileID: 1892165745}
   - component: {fileID: 1892165744}
-  - component: {fileID: 1892165749}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -1783,8 +1783,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   playerSpeed: 5
   jumpHeight: 6
-  epsilonReduction: 0.005
+  epsilonReductionRate: 0.01
   epsilon: 1
+  epsilonMin: 0.1
   gamma: 0.9
   numEpisodes: 1000
   Player: {fileID: 1892165743}
