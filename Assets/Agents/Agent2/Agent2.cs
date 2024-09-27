@@ -1,14 +1,11 @@
-using NUnit.Framework;
 using System.Collections;
 using System.Linq;
 using TMPro;
 using UnityEngine;
 
-
 public class Agent2 : MonoBehaviour
 {
     [SerializeField] float playerSpeed = 5;
-    [SerializeField] float rotateSpeed = 50;
     [SerializeField] float jumpHeight = 5;
     [SerializeField] float epsilonReductionRate = 0.001f;
     [SerializeField] float epsilon = 1f;
@@ -39,7 +36,6 @@ public class Agent2 : MonoBehaviour
 
     void Start()
     {
-        //Time.timeScale = 5;
         model = NetworkBuilder.Create()
             .Stack(new InputLayer(4)) //obst1 distance, obst2 distance, rotationY
             .Stack(new DenseLayer(50, ActivationType.Sigmoid))
@@ -51,6 +47,7 @@ public class Agent2 : MonoBehaviour
 
         StartCoroutine(TrainModel());
     }
+
 
     public void LoadWeights()
     {
@@ -92,15 +89,6 @@ public class Agent2 : MonoBehaviour
     {
         Player.transform.Translate(Vector3.left * playerSpeed * Time.deltaTime);
     }
-    void RotateLeft()
-    {
-        Player.transform.Rotate(new Vector3(0,1,0) * rotateSpeed * Time.deltaTime);
-    }
-    void RotateRight()
-    {
-        Player.transform.Rotate(new Vector3(0, -1, 0) * rotateSpeed * Time.deltaTime);
-    }
-
     void JumpPlayer()
     {
         //jump only if the player is grounded and not in cooldown
@@ -130,15 +118,25 @@ public class Agent2 : MonoBehaviour
 
                 float[] state = { boxDist, obst2Dist, height, Time.time - totalTime };
 
+                // Define the origin of the ray as the player's head position
+                Vector3 originOfTheRay = Player.transform.position;
+
+                Vector3 directionOfTheRay = -Player.transform.right;
+
+                RaycastHit raycastHit;
+                bool weHitSomething = Physics.Raycast(originOfTheRay, directionOfTheRay, out raycastHit);
+
+
+                float length = Player.transform.position.x - Box1.transform.position.x;
+                if(length > 0)
+                    Debug.DrawRay(originOfTheRay, directionOfTheRay * length, Color.red);
+
+
                 if (Random.value < epsilon)
                     action = Random.Range(0, 1);
                 else
                     action = ArgsMaxIndex(model.Predict(state));
 
-                //if (action == 1)
-                //    RotateRight();
-                //else if (action == 2)
-                //    RotateLeft();
                 if(action == 1)
                     JumpPlayer();
 
@@ -160,6 +158,7 @@ public class Agent2 : MonoBehaviour
                 //check for goal and obstacle conditions
                 if (hitGoal)
                 {
+                    //lower reward if it took longer:
                     reward = (1 - Time.time - totalTime / 10) + 0.05f;
                     passedCount++;
                     hitGoal = false;
