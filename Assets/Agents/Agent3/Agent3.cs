@@ -1,3 +1,4 @@
+using JetBrains.Annotations;
 using System.Collections;
 using System.Linq;
 using TMPro;
@@ -35,14 +36,16 @@ public class Agent3 : MonoBehaviour
     int failedCount = 0;
     float passedFailedRatio = 0.0f;
     float totalTime = 0;
-    int totalStates => Boxes.Length + Obstacles.Length + 3;
+    int totalStates => Boxes.Length + Obstacles.Length + 1;
+    int touchedBlockCount = 0;
+    bool speedyMode = false;
 
     void Start()
     {
         model = NetworkBuilder.Create()
             .Stack(new InputLayer(totalStates)) //obst1 distance, obst2 distance, rotationY
-            .Stack(new DenseLayer(50, ActivationType.Sigmoid))
-            .Stack(new OutputLayer(2, ActivationType.Sigmoid))
+            .Stack(new DenseLayer(100, ActivationType.Sigmoid))
+            .Stack(new OutputLayer(4, ActivationType.Sigmoid))
             .Build(false);
 
         initialPlayerPosition = Player.transform.position;
@@ -90,11 +93,10 @@ public class Agent3 : MonoBehaviour
 
     void WalkForward()
     {
-        Player.transform.Translate(Vector3.left * playerSpeed * Time.deltaTime);
+        Player.transform.Translate(Vector3.left * ((speedyMode ? 1 : 0) + playerSpeed) * Time.deltaTime);
     }
     void JumpPlayer()
     {
-        //jump only if the player is grounded and not in cooldown
         if (isGrounded)
         {
             Player.GetComponent<Rigidbody>().AddForce(Vector3.up * jumpHeight, ForceMode.Impulse);
@@ -114,37 +116,38 @@ public class Agent3 : MonoBehaviour
                 float reward = 0;
                 int action = 0;
 
-                float[] state = new float[Boxes.Length + Obstacles.Length + 3];
+                float[] state = new float[totalStates];
 
                 bool fellDown = Player.transform.position.y - Floor.transform.position.y < 0;
                 float rotationY = Player.transform.rotation.y;
                 float height = Player.transform.position.y - initialPlayerPosition.y;
 
-                for (int i = 0; i < (Boxes.Length + Obstacles.Length); i++)
+                for (int i = 0; i < Boxes.Length; i++)
                 {
-                    if (i < Boxes.Length)
-                    {
-                        float boxDist = Player.transform.position.x - Boxes[i].transform.position.x;
-                        state[i] = boxDist;
-                    }
-                    else
-                    {
-                        float obstDist = Player.transform.position.x - Obstacles[i - Boxes.Length].transform.position.x;
-                        state[i - Boxes.Length] = obstDist;
-                    }
+                    state[i] = Player.transform.position.x - Boxes[i].transform.position.x;
                 }
 
-                state[Boxes.Length + Obstacles.Length + 1] = height;
+                for (int i = 0; i < Obstacles.Length; i++)
+                {
+                    state[Boxes.Length + i] = Player.transform.position.x - Obstacles[i].transform.position.x;
+                }
+                state[totalStates - 1] = height;
+
+                Debug.Log(string.Join(", ", state));
 
                 if (Random.value < epsilon)
                 {
-                    action = Random.Range(0, 2);
+                    action = Random.Range(0, 4);
                 }
                 else
                     action = ArgsMaxIndex(model.Predict(state));
 
                 if (action == 1)
                     JumpPlayer();
+                else if (action == 2)
+                    speedyMode = true;
+                else if (action == 3)
+                    speedyMode = false;
 
                 if (fellDown)
                 {
@@ -155,7 +158,8 @@ public class Agent3 : MonoBehaviour
 
                 if (hitBox)
                 {
-                    reward = 0.05f;
+                    touchedBlockCount++;
+                    reward = 0.02f * touchedBlockCount;
                     hitBox = false;
                 }
 
@@ -193,7 +197,7 @@ public class Agent3 : MonoBehaviour
                     epsilonDisplay.text = $"Epsilon: {epsilon}";
 
                     totalTime = Time.time;
-
+                    touchedBlockCount = 0;
                     if (done)
                     {
                         isEpisodeDone = true;
@@ -227,7 +231,6 @@ public class Agent3 : MonoBehaviour
         if (collision.gameObject.layer == 3) //ground
         {
             isGrounded = true;
-            
             if (collision.gameObject.tag.Equals("CanJumpOn"))
             {
                 hitBox = true;

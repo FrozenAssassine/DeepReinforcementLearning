@@ -16,4 +16,8 @@ public class MathHelper
     {
         return System.Array.IndexOf(items, items.Max());
     }
+    public static float RandomFloat(double min, double max)
+    {
+        return (float)(min + Random.value * (max - min));
+    }
 }

@@ -62,9 +62,9 @@ public class DenseLayer : BaseLayer
         Debug.Log($"Dense Layer of {Size} Neurons and {Weights.Length} Weights");
     }
 
-    public override void Initialize()
+    public override void Initialize(int inputCount, int outputCount)
     {
-        LayerInitialisationHelper.InitializeLayer(this);
+        LayerInitialisationHelper.InitializeLayer(this, inputCount, outputCount);
     }
 
     public override void InitializeCuda(int index)
