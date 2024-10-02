@@ -133,7 +133,7 @@ public class Agent2 : MonoBehaviour
 
 
                 if (Random.value < epsilon)
-                    action = Random.Range(0, 1);
+                    action = Random.Range(0, 2);
                 else
                     action = ArgsMaxIndex(model.Predict(state));
 
@@ -185,6 +185,9 @@ public class Agent2 : MonoBehaviour
 
                     if(epsilon > epsilonMin)
                         epsilon -= epsilonReductionRate;
+
+                    if (epsilon < 0)
+                        epsilon = epsilonMin;
 
                     epsilonDisplay.text = $"Epsilon: {epsilon}";
 

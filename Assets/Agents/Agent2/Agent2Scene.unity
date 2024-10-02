@@ -472,11 +472,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   playerSpeed: 5
-  rotateSpeed: 100
   jumpHeight: 5
-  epsilonReductionRate: 0.005
+  epsilonReductionRate: 0.05
   epsilon: 1
-  epsilonMin: 0.01
+  epsilonMin: 0.1
   gamma: 0.9
   numEpisodes: 1000
   Player: {fileID: 398539306}

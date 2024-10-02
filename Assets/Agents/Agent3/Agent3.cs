@@ -133,10 +133,13 @@ public class Agent3 : MonoBehaviour
                         state[i - Boxes.Length] = obstDist;
                     }
                 }
+
                 state[Boxes.Length + Obstacles.Length + 1] = height;
 
                 if (Random.value < epsilon)
-                    action = Random.Range(0, 1);
+                {
+                    action = Random.Range(0, 2);
+                }
                 else
                     action = ArgsMaxIndex(model.Predict(state));
 
@@ -185,7 +188,7 @@ public class Agent3 : MonoBehaviour
                     overviewDisplay.text = $"Epochs: {trainedEpochs++}\nReward: {reward}\nPassed: {passedCount}\nFailed: {failedCount}\nTarget: {qTarget}\nQNext: {maxQValueNext}\nAction: {action}\nP/F: {passedFailedRatio}";
 
                     if (epsilon > epsilonMin)
-                        epsilon -= epsilonReductionRate;
+                        epsilon = Mathf.Clamp(epsilon - epsilonReductionRate, 0, 1);
 
                     epsilonDisplay.text = $"Epsilon: {epsilon}";
 
@@ -214,17 +217,22 @@ public class Agent3 : MonoBehaviour
             done = true;
         }
 
-        //detect collision with ground for jumping
-        if (collision.gameObject.layer == 5)
+        if (collision.gameObject.tag.Equals("Obstacle"))
         {
-            hitBox = true;
+            hitObstacle = true;
             done = true;
         }
 
         //detect collision with ground for jumping
-        if (collision.gameObject.CompareTag("Ground"))
+        if (collision.gameObject.layer == 3) //ground
         {
             isGrounded = true;
+            
+            if (collision.gameObject.tag.Equals("CanJumpOn"))
+            {
+                hitBox = true;
+            }
+
         }
     }
 
