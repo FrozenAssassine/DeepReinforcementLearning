@@ -1,18 +1,15 @@
-using JetBrains.Annotations;
 using System.Collections;
 using System.Linq;
 using TMPro;
-using UnityEditorInternal;
 using UnityEngine;
-using UnityEngine.UIElements;
+using static UnityEngine.GraphicsBuffer;
 
 public class Agent3 : MonoBehaviour
 {
     [SerializeField] float playerSpeed = 5;
     [SerializeField] float jumpHeight = 5;
-    [SerializeField] float epsilonReductionRate = 0.001f;
     [SerializeField] float epsilon = 1f;
-    [SerializeField] float epsilonMin = 0.01f;
+    [SerializeField] float epsilonMin = 0;
     [SerializeField] float gamma = 0.9f;
     [SerializeField] int numEpisodes = 1000;
     [SerializeField] GameObject Player;
@@ -36,16 +33,15 @@ public class Agent3 : MonoBehaviour
     int failedCount = 0;
     float passedFailedRatio = 0.0f;
     float totalTime = 0;
-    int totalStates => Boxes.Length + Obstacles.Length + 1;
-    int touchedBlockCount = 0;
-    bool speedyMode = false;
+    int totalStates => Boxes.Length + Obstacles.Length + 3;
+    int jumpCount = 0;
 
     void Start()
     {
         model = NetworkBuilder.Create()
             .Stack(new InputLayer(totalStates)) //obst1 distance, obst2 distance, rotationY
-            .Stack(new DenseLayer(100, ActivationType.Sigmoid))
-            .Stack(new OutputLayer(4, ActivationType.Sigmoid))
+            .Stack(new DenseLayer(100, ActivationType.Relu))
+            .Stack(new OutputLayer(2, ActivationType.Softmax))
             .Build(false);
 
         initialPlayerPosition = Player.transform.position;
@@ -89,128 +85,142 @@ public class Agent3 : MonoBehaviour
         Player.transform.position = initialPlayerPosition;
         Player.transform.rotation = initialPlayerRotation;
         Player.GetComponent<Rigidbody>().velocity = Vector3.zero;
+        jumpCount = 0;
     }
 
     void WalkForward()
     {
-        Player.transform.Translate(Vector3.left * ((speedyMode ? 1 : 0) + playerSpeed) * Time.deltaTime);
+        Player.transform.Translate(Vector3.left * playerSpeed * Time.deltaTime);
     }
     void JumpPlayer()
     {
         if (isGrounded)
         {
+            jumpCount++;
             Player.GetComponent<Rigidbody>().AddForce(Vector3.up * jumpHeight, ForceMode.Impulse);
             isGrounded = false;
         }
+    }
+
+    float[] GetStateArray()
+    {
+        float[] state = new float[totalStates];
+
+        for (int i = 0; i < Boxes.Length; i++)
+            state[i] = Player.transform.position.x - Boxes[i].transform.position.x;
+
+        for (int i = 0; i < Obstacles.Length; i++)
+            state[Boxes.Length + i] = Player.transform.position.x - Obstacles[i].transform.position.x;
+        
+        state[totalStates - 1] = Player.transform.position.y - initialPlayerPosition.y;
+        state[totalStates - 2] = Player.GetComponent<Rigidbody>().velocity.x;
+        state[totalStates - 3] = isGrounded ? 1.0f : 0.0f;
+        return state;
+    }
+
+    void PerformAction(int action)
+    {
+        switch (action)
+        {
+            case 0:
+                break;
+            case 1:
+                JumpPlayer();
+                break;
+        }
+    }
+    float CalculateReward()
+    {
+        float reward = -0.001f;
+
+        if (hitBox)
+        {
+            reward += 0.005f;
+            hitBox = false;
+        }
+
+        if (hitGoal)
+        {
+            float timeFactor = Mathf.Clamp(1.0f - (Time.time - totalTime) / 10, 0.2f, 1.0f);
+            reward += 1.0f * timeFactor;
+            passedCount++;
+            hitGoal = false;
+        }
+        else if (hitObstacle)
+        {
+            reward = -1.0f;
+            failedCount++;
+            hitObstacle = false;
+        }
+        return reward;
     }
 
     IEnumerator TrainModel()
     {
         for (int episode = 0; episode < numEpisodes; episode++)
         {
+            ResetPlayer();
             bool isEpisodeDone = false;
-            bool done = false;
 
             while (!isEpisodeDone)
             {
-                float reward = 0;
-                int action = 0;
+                int action;
+                float[] state = GetStateArray();
 
-                float[] state = new float[totalStates];
-
-                bool fellDown = Player.transform.position.y - Floor.transform.position.y < 0;
-                float rotationY = Player.transform.rotation.y;
-                float height = Player.transform.position.y - initialPlayerPosition.y;
-
-                for (int i = 0; i < Boxes.Length; i++)
-                {
-                    state[i] = Player.transform.position.x - Boxes[i].transform.position.x;
-                }
-
-                for (int i = 0; i < Obstacles.Length; i++)
-                {
-                    state[Boxes.Length + i] = Player.transform.position.x - Obstacles[i].transform.position.x;
-                }
-                state[totalStates - 1] = height;
-
-                Debug.Log(string.Join(", ", state));
-
+                // Epsilon-greedy action selection
                 if (Random.value < epsilon)
-                {
-                    action = Random.Range(0, 4);
-                }
+                    action = Random.Range(0, 2);
                 else
                     action = ArgsMaxIndex(model.Predict(state));
 
-                if (action == 1)
-                    JumpPlayer();
-                else if (action == 2)
-                    speedyMode = true;
-                else if (action == 3)
-                    speedyMode = false;
+                PerformAction(action);
 
-                if (fellDown)
-                {
-                    reward = -1f;
-                    failedCount++;
-                    done = true;
-                }
+                float reward = CalculateReward();
+                isEpisodeDone = hitGoal || hitObstacle;
 
-                if (hitBox)
+                if (reward != -0.001f && hitBox == false)
                 {
-                    touchedBlockCount++;
-                    reward = 0.02f * touchedBlockCount;
-                    hitBox = false;
-                }
+                    if (jumpCount < 3 || jumpCount > 3)
+                        reward -= 0.03f * jumpCount;
+                    else if (jumpCount == 3)
+                        reward += 0.04f;
 
-                //check for goal and obstacle conditions
-                if (hitGoal)
-                {
-                    //lower reward if it took longer:
-                    reward = (1 - Time.time - totalTime / 10) + 0.05f;
-                    passedCount++;
-                    hitGoal = false;
-                }
-                else if (hitObstacle)
-                {
-                    reward = -1f;
-                    failedCount++;
-                    hitObstacle = false;
-                }
+                    //jumping on non ground level
+                    if(Player.transform.position.y - initialPlayerPosition.y > 0.5)
+                    {
+                        reward += 0.04f;
+                    }
 
-                //retrain the model when the reward is not 0
-                if (reward != 0)
-                {
-                    float maxQValueNext = ArgsMax(model.FeedForward(state));
-                    float qTarget = reward + gamma * maxQValueNext;
-
-                    float[] qValues = model.FeedForward(state);
+                    //update the training values:
+                    float[] qValues = model.FeedForward(state).ToArray();
+                    float qTarget = reward + gamma * ArgsMax(model.FeedForward(state));
                     qValues[action] = qTarget;
-
                     model.Train(state, qValues, 0.05f);
 
-                    overviewDisplay.text = $"Epochs: {trainedEpochs++}\nReward: {reward}\nPassed: {passedCount}\nFailed: {failedCount}\nTarget: {qTarget}\nQNext: {maxQValueNext}\nAction: {action}\nP/F: {passedFailedRatio}";
+                    UpdateUI(reward, action, qTarget);
 
-                    if (epsilon > epsilonMin)
-                        epsilon = Mathf.Clamp(epsilon - epsilonReductionRate, 0, 1);
-
-                    epsilonDisplay.text = $"Epsilon: {epsilon}";
-
-                    totalTime = Time.time;
-                    touchedBlockCount = 0;
-                    if (done)
-                    {
-                        isEpisodeDone = true;
-                        done = false;
-                    }
+                    epsilon = Mathf.Max(epsilon * 0.9f, epsilonMin);
                 }
 
                 yield return null;
             }
-
-            ResetPlayer();
         }
     }
+
+    void UpdateUI(float reward, int action, float qTarget)
+    {
+        epsilonDisplay.text = epsilon.ToString();
+
+        overviewDisplay.text =
+            $"Epochs: {trainedEpochs++}\n" +
+            $"Reward: {reward}\n" +
+            $"Passed: {passedCount}\n" +
+            $"Failed: {failedCount}\n" +
+            $"Target: {qTarget}\n" +
+            $"Action: {action}\n" +
+            $"P/F: {passedFailedRatio}";
+    }
+
 
     void OnCollisionEnter(Collision collision)
     {
@@ -235,7 +245,6 @@ public class Agent3 : MonoBehaviour
             {
                 hitBox = true;
             }
-
         }
     }
 

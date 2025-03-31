@@ -474,8 +474,8 @@ MonoBehaviour:
   playerSpeed: 5
   jumpHeight: 5
   epsilonReductionRate: 0.05
-  epsilon: 1
-  epsilonMin: 0.1
+  epsilon: 0.1
+  epsilonMin: 0.001
   gamma: 0.9
   numEpisodes: 1000
   Player: {fileID: 398539306}
@@ -1047,8 +1047,8 @@ Transform:
   m_GameObject: {fileID: 707766047}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -3.75, y: 3.74, z: 0.07}
-  m_LocalScale: {x: 1, y: 1, z: 0.48681}
+  m_LocalPosition: {x: -4.8, y: 0.04, z: 0.07}
+  m_LocalScale: {x: 2.457, y: 0.069603, z: 0.48681}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}

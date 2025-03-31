@@ -9,7 +9,7 @@ public class Agent2 : MonoBehaviour
     [SerializeField] float jumpHeight = 5;
     [SerializeField] float epsilonReductionRate = 0.001f;
     [SerializeField] float epsilon = 1f;
-    [SerializeField] float epsilonMin = 0.01f;
+    [SerializeField] float epsilonMin = 0.001f;
     [SerializeField] float gamma = 0.9f;
     [SerializeField] int numEpisodes = 1000;
     [SerializeField] GameObject Player;
@@ -33,13 +33,14 @@ public class Agent2 : MonoBehaviour
     int failedCount = 0;
     float passedFailedRatio = 0.0f;
     float totalTime = 0;
+    int jumpCount = 0;
 
     void Start()
     {
         model = NetworkBuilder.Create()
-            .Stack(new InputLayer(4)) //obst1 distance, obst2 distance, rotationY
-            .Stack(new DenseLayer(50, ActivationType.Sigmoid))
-            .Stack(new OutputLayer(2, ActivationType.Sigmoid))
+            .Stack(new InputLayer(4))
+            .Stack(new DenseLayer(100, ActivationType.Relu))
+            .Stack(new OutputLayer(2, ActivationType.Softmax))
             .Build(false);
 
         initialPlayerPosition = Player.transform.position;
@@ -83,6 +84,8 @@ public class Agent2 : MonoBehaviour
         Player.transform.position = initialPlayerPosition;
         Player.transform.rotation = initialPlayerRotation;
         Player.GetComponent<Rigidbody>().velocity = Vector3.zero;
+
+        jumpCount = 0;
     }
 
     void WalkForward()
@@ -94,6 +97,7 @@ public class Agent2 : MonoBehaviour
         //jump only if the player is grounded and not in cooldown
         if (isGrounded)
         {
+            jumpCount++;
             Player.GetComponent<Rigidbody>().AddForce(Vector3.up * jumpHeight, ForceMode.Impulse);
             isGrounded = false;
         }
@@ -108,29 +112,13 @@ public class Agent2 : MonoBehaviour
 
             while (!isEpisodeDone)
             {
-                float reward = 0;
+                float reward = -0.005f;
                 int action = 0;
                 float boxDist = Player.transform.position.x - Box1.transform.position.x;
                 float obst2Dist = Player.transform.position.x - Obstacle2.transform.position.x;
-                bool fellDown = Player.transform.position.y - Floor.transform.position.y < 0;
                 float rotationY = Player.transform.rotation.y;
                 float height = Player.transform.position.y - initialPlayerPosition.y;
-
                 float[] state = { boxDist, obst2Dist, height, Time.time - totalTime };
-
-                // Define the origin of the ray as the player's head position
-                Vector3 originOfTheRay = Player.transform.position;
-
-                Vector3 directionOfTheRay = -Player.transform.right;
-
-                RaycastHit raycastHit;
-                bool weHitSomething = Physics.Raycast(originOfTheRay, directionOfTheRay, out raycastHit);
-
-
-                float length = Player.transform.position.x - Box1.transform.position.x;
-                if(length > 0)
-                    Debug.DrawRay(originOfTheRay, directionOfTheRay * length, Color.red);
-
 
                 if (Random.value < epsilon)
                     action = Random.Range(0, 2);
@@ -139,15 +127,6 @@ public class Agent2 : MonoBehaviour
 
                 if(action == 1)
                     JumpPlayer();
-
-                Debug.Log("Train with: Forward: " + state[0] + " Rotation: " + state[1]);
-
-                if (fellDown)
-                {
-                    reward = -1f;
-                    failedCount++;
-                    done = true;
-                }
 
                 if (hitBox)
                 {
@@ -159,7 +138,16 @@ public class Agent2 : MonoBehaviour
                 if (hitGoal)
                 {
                     //lower reward if it took longer:
-                    reward = (1 - Time.time - totalTime / 10) + 0.05f;
+                    float timeFactor = Mathf.Clamp(1.0f - (Time.time - totalTime) / 20, 0.1f, 0.8f);
+                    reward += 0.8f * timeFactor;
+
+                    if (jumpCount == 1)
+                        reward += 0.1f;
+                    else
+                    {
+                        reward -= 0.3f;
+                    }
+
                     passedCount++;
                     hitGoal = false;
                 }
@@ -171,7 +159,7 @@ public class Agent2 : MonoBehaviour
                 }
 
                 //retrain the model when the reward is not 0
-                if (reward != 0)
+                if (reward != -0.005f)
                 {
                     float maxQValueNext = ArgsMax(model.FeedForward(state));
                     float qTarget = reward + gamma * maxQValueNext;
@@ -180,16 +168,11 @@ public class Agent2 : MonoBehaviour
                     qValues[action] = qTarget;
 
                     model.Train(state, qValues, 0.05f);
-
-                    overviewDisplay.text = $"Epochs: {trainedEpochs++}\nReward: {reward}\nPassed: {passedCount}\nFailed: {failedCount}\nTarget: {qTarget}\nQNext: {maxQValueNext}\nAction: {action}\nP/F: {passedFailedRatio}";
-
-                    if(epsilon > epsilonMin)
-                        epsilon -= epsilonReductionRate;
-
-                    if (epsilon < 0)
-                        epsilon = epsilonMin;
+      
+                    epsilon = Mathf.Max(epsilon * 0.99f, epsilonMin);
 
                     epsilonDisplay.text = $"Epsilon: {epsilon}";
+                    overviewDisplay.text = $"Epochs: {trainedEpochs++}\nReward: {reward}\nPassed: {passedCount}\nFailed: {failedCount}\nTarget: {qTarget}\nQNext: {maxQValueNext}\nAction: {action}\nP/F: {passedFailedRatio}";
 
                     totalTime = Time.time;
 
