@@ -193,11 +193,6 @@ public class Agent4 : MonoBehaviour
                     epsilonDisplay.text = $"Epsilon: {epsilon}";
 
                     if (done)
-                    {
-                        isEpisodeDone = true;
-                        done = false;
-                    }
-                }
 
                 yield return null;
             }

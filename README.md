@@ -26,3 +26,6 @@ Initial training is yielding mixed results, with the agent sometimes failing to 
 1. Clone the repository.
 2. Open the project in Unity.
 3. Run the game to watch the agent in action and adjust training settings as needed.
+
+## 📷 Images
+![image](https://github.com/user-attachments/assets/8d21ee86-6646-4072-a1e1-9168b5c3c84b)
