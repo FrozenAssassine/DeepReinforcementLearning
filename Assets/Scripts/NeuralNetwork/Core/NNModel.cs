@@ -43,6 +43,78 @@ public class NNModel
         nn.Train_CPU(inputs, desired,learningRate);
     }
 
+    public float[] Train(
+            float[][] inputs,
+            float[][] desired,
+            int epochs,
+            float learningRate = 0.1f,
+            int loggingInterval = 100,
+            int epochInterval = 1,
+            float evaluatePercent = 10
+            )
+    {
+        if (inputs[0].Length != nn.allLayer[0].Size)
+            throw new Exception("Input size does not match input layer count");
+
+        //let cuda check for available devices:
+        if (useCuda)
+            useCuda = CudaAccel.CheckCuda();
+
+        Console.WriteLine(new string('-', 50) + "\n");
+        float[] accuracys = new float[epochs];
+        var trainingTime = BenchmarkExtension.Benchmark(() =>
+        {
+            int trainDataCount = (int)(inputs.Length * (100 - evaluatePercent)) / 100;
+
+            Stopwatch epochTime = new Stopwatch();
+            Stopwatch stepTimeSW = new Stopwatch();
+            for (int e = 0; e < epochs; e++)
+            {
+                float averageStepTime = 0;
+                epochTime.Restart();
+                stepTimeSW.Start();
+
+                for (int i = 0; i < trainDataCount; i++)
+                {
+                    if (useCuda)
+                        CudaAccel.Train(inputs[i], desired[i], inputs.Length, learningRate);
+                    else
+                        nn.Train_CPU(inputs[i], desired[i], learningRate);
+
+                    //use this, when each epoch takes longer due to more items that need to compute
+                    if ((i + 1) % loggingInterval == 0)
+                    {
+                        stepTimeSW.Stop();
+
+                        averageStepTime += stepTimeSW.ElapsedMilliseconds;
+                        Console.WriteLine($"Epoch {e + 1}/{epochs}; {i + 1}/{trainDataCount}; ({stepTimeSW.ElapsedMilliseconds}ms, {stepTimeSW.ElapsedTicks}ticks)");
+                        stepTimeSW.Restart();
+                    }
+                }
+
+                //print epoch every x epochs (default: 100) => for fast training
+                if ((e + 1) % epochInterval == 0)
+                {
+
+                    Console.WriteLine(new string('-', 50));
+                    Console.WriteLine($"Epoch {e + 1} took {epochTime.ElapsedMilliseconds}ms; " + (averageStepTime > 0 ? $"avg({(int)averageStepTime / (inputs.Length / loggingInterval)}ms/step" : ""));
+
+                    //dont print the last line after training => looks weird :D
+                    if (e != epochs - 1)
+                        Console.WriteLine(new string('-', 50));
+                }
+            }
+        });
+
+        if (useCuda)
+            CudaAccel.DoneTraining();
+
+        Console.WriteLine(new string('=', 50) + "\n");
+        Console.WriteLine($"Training took: {trainingTime}\n");
+
+        return accuracys;
+    }
+
     public void Save(string path)
     {
         Console.WriteLine("Saving model data to file");
