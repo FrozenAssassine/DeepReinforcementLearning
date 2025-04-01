@@ -1,6 +1,7 @@
 
 // Environment manager class remains the same
 using UnityEngine;
+using UnityEngine.UIElements;
 
 public class EnvironmentManager : MonoBehaviour
 {
@@ -17,7 +18,8 @@ public class EnvironmentManager : MonoBehaviour
 
         for(int i = 0; i< robots; i++)
         {
-            Instantiate(robot);
+            var r = Instantiate(robot);
+            r.transform.position = new Vector3(Random.Range(-50, 50), 5f, Random.Range(-50, 50));
         }
     }
 

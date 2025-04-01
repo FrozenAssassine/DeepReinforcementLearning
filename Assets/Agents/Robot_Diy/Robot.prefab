@@ -60,6 +60,7 @@ MeshRenderer:
   m_RayTraceProcedural: 0
   m_RayTracingAccelStructBuildFlagsOverride: 0
   m_RayTracingAccelStructBuildFlags: 1
+  m_SmallMeshCulling: 1
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
@@ -133,26 +134,20 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e36ad16937c9794428f11db53e274c9c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  inputNeurons: 1
+  inputNeurons: 5
   hiddenNeurons: 20
   outputNeurons: 2
-  maxSpeed: 2
-  maxRotationSpeed: 120
+  maxSpeed: 3
+  maxRotationSpeed: 200
   motorLeftOutput: 0
   motorRightOutput: 0
   maxSensorDistance: 3
   sensorPivot: {fileID: 9061006143702751122}
-  servoXAngle: 40
-  servoYAngle: 40
-  servoXSpeed: 30
-  servoYSpeed: 30
-  servoXRange: 50
-  servoYRange: 45
-  scanPoints: 1
+  scanPoints: 5
   rewardMultiplier: 1
   collisionPenalty: -10
   episodeLength: 15
-  trainingInterval: 30
+  trainingInterval: 5
   batchSize: 1000
 --- !u!65 &4314613550099571170
 BoxCollider:
@@ -262,6 +257,7 @@ MeshRenderer:
   m_RayTraceProcedural: 0
   m_RayTracingAccelStructBuildFlagsOverride: 0
   m_RayTracingAccelStructBuildFlags: 1
+  m_SmallMeshCulling: 1
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:

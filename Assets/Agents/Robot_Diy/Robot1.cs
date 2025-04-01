@@ -7,41 +7,29 @@ using System.Linq;
 // Robot controller that will be trained with neural network
 public class RobotController : MonoBehaviour
 {
-    // Neural Network parameters
     [Header("Neural Network")]
-    public int inputNeurons = 5;   // Input: distances from sensor at different angles
+    public int inputNeurons = 5;
     public int hiddenNeurons = 20;
-    public int outputNeurons = 2;  // Output: motor speed left, motor speed right
+    public int outputNeurons = 2;
     private NNModel nnmodel;
 
-    // Training data collection
     private List<float[]> trainingInputs = new List<float[]>();
     private List<float[]> trainingOutputs = new List<float[]>();
     private float performanceScore = 0;
 
-    // Robot movement parameters
     [Header("Robot Movement")]
     public float maxSpeed = 2.0f;
     public float maxRotationSpeed = 120.0f;
     public float motorLeftOutput = 0f;
     public float motorRightOutput = 0f;
 
-    // Ultrasonic sensor simulation
     [Header("Sensor")]
     public float maxSensorDistance = 5.0f;
     public Transform sensorPivot;
-    public float servoXAngle = 0f;  // Horizontal rotation (left-right)
-    public float servoYAngle = 0f;  // Vertical rotation (up-down)
-    public float servoXSpeed = 80f; // Degrees per second
-    public float servoYSpeed = 60f;
-    public float servoXRange = 90f; // Can rotate ±90 degrees horizontally
-    public float servoYRange = 45f; // Can rotate ±45 degrees vertically
-
-    // Scanning parameters
+    
     public int scanPoints = 5;
     private float[] sensorReadings;
 
-    // Training parameters
     [Header("Training")]
     public float rewardMultiplier = 1.0f;
     public float collisionPenalty = -10.0f;
@@ -49,7 +37,6 @@ public class RobotController : MonoBehaviour
     private float totalReward = 0f;
     private int episodeCount = 0;
     private bool isTraining = true;
-    private float lastPerformance = 0f;
 
     // Episode management
     public float episodeLength = 30f;
@@ -58,6 +45,8 @@ public class RobotController : MonoBehaviour
     private float trainingTimer = 0f;
     public int batchSize = 1000; // How many samples to collect before training
     private int samplesCollected = 0;
+
+    private bool isTrainingCoroutineRunning = false;
 
     void Start()
     {
@@ -68,14 +57,6 @@ public class RobotController : MonoBehaviour
 
         // Initialize sensor readings array
         sensorReadings = new float[scanPoints];
-
-        // Add a small collider to detect wall collisions
-        BoxCollider boxCollider = gameObject.AddComponent<BoxCollider>();
-        boxCollider.size = new Vector3(0.5f, 0.5f, 0.5f);
-        boxCollider.isTrigger = true;
-
-        // Reset the robot and start training
-        ResetEpisode();
     }
 
     void InitializeNeuralNetwork()
@@ -83,8 +64,9 @@ public class RobotController : MonoBehaviour
         // Create neural network using the provided NetworkBuilder
         nnmodel = NetworkBuilder.Create()
             .Stack(new InputLayer(inputNeurons))
-            .Stack(new DenseLayer(hiddenNeurons, ActivationType.Sigmoid))
-            .Stack(new OutputLayer(outputNeurons, ActivationType.Sigmoid))
+            .Stack(new DenseLayer(hiddenNeurons, ActivationType.Relu))
+            .Stack(new DenseLayer(hiddenNeurons, ActivationType.Relu))
+            .Stack(new OutputLayer(outputNeurons, ActivationType.Softmax))
             .Build(true); // Set to true to use GPU acceleration if available
 
         Debug.Log("Neural Network initialized");
@@ -114,9 +96,6 @@ public class RobotController : MonoBehaviour
             // Move the robot
             MoveRobot(motorLeftOutput, motorRightOutput);
 
-            // Update sensor position (simulating servo movement)
-            UpdateSensorPosition();
-
             // Calculate reward based on time survived and forward motion
             float movementReward = CalculateMovementReward();
             float reward = (Time.deltaTime * rewardMultiplier) + movementReward;
@@ -131,26 +110,27 @@ public class RobotController : MonoBehaviour
             {
                 float episodePerformance = performanceScore / episodeLength;
                 Debug.Log($"Episode {episodeCount} completed. Total reward: {totalReward}, Performance: {episodePerformance}");
-                lastPerformance = episodePerformance;
                 episodeCount++;
                 performanceScore = 0;
                 ResetEpisode();
             }
 
-            // Train the network periodically with collected data
-            if (trainingTimer >= trainingInterval && trainingInputs.Count >= batchSize)
+            // Train the network periodically without blocking
+            if (trainingTimer >= trainingInterval && trainingInputs.Count >= batchSize && !isTrainingCoroutineRunning)
             {
-                TrainNetworkWithCollectedData();
+                StartCoroutine(TrainNetworkWithCollectedData());
                 trainingTimer = 0f;
             }
         }
     }
 
+
     float CalculateMovementReward()
     {
-        // Reward forward movement more than turning in place
-        float forwardSpeed = (motorLeftOutput + motorRightOutput) * 0.5f;
-        return forwardSpeed * 0.1f;
+        float distanceReward = sensorReadings[2];
+        float speedReward = (motorLeftOutput + motorRightOutput) * 0.5f;
+        float turnPenalty = -Mathf.Abs(motorLeftOutput - motorRightOutput) * 0.05f;
+        return distanceReward + speedReward + turnPenalty;
     }
 
     void CollectTrainingData(float[] inputs, float[] outputs, float reward)
@@ -170,13 +150,13 @@ public class RobotController : MonoBehaviour
         {
             if (FindMostBlockedDirection() < scanPoints / 2)
             {
-                desiredOutputs[0] = 0.2f; // Slow left motor
-                desiredOutputs[1] = 0.8f; // Fast right motor
+                desiredOutputs[0] = 0.4f; // Slow left motor
+                desiredOutputs[1] = 0.6f; // Fast right motor
             }
             else
             {
-                desiredOutputs[0] = 0.8f; // Fast left motor
-                desiredOutputs[1] = 0.2f; // Slow right motor
+                desiredOutputs[0] = 0.6f; // Fast left motor
+                desiredOutputs[1] = 0.4f; // Slow right motor
             }
         }
 
@@ -205,7 +185,6 @@ public class RobotController : MonoBehaviour
                 minIndex = i;
             }
         }
-
         return minIndex;
     }
 
@@ -223,7 +202,7 @@ public class RobotController : MonoBehaviour
         float[][] inputsArray = trainingInputs.ToArray();
         float[][] outputsArray = trainingOutputs.ToArray();
 
-        nnmodel.Train(inputsArray, outputsArray, 100, 0.05f);
+        nnmodel.Train(inputsArray, outputsArray, 50, 0.003f);
 
         Debug.Log("Network training completed");
 
@@ -237,35 +216,30 @@ public class RobotController : MonoBehaviour
             trainingInputs = trainingInputs.Skip(trainingInputs.Count - samplesToKeep).ToList();
             trainingOutputs = trainingOutputs.Skip(trainingOutputs.Count - samplesToKeep).ToList();
         }
+        isTrainingCoroutineRunning = false;
     }
 
     void ScanEnvironment()
     {
-        //float angleStep = (servoXRange * 2) / (scanPoints - 1);
-        float startAngle = this.transform.rotation.y; // - servoXRange + servoXAngle;
+        float[] angles = { -30, -15, 0, 15, 30 };
 
-        //for (int i = 0; i < scanPoints; i++)
-        //{
-            //float angle = startAngle + (angleStep * i);
-
-            Quaternion rotation = this.transform.rotation; // Quaternion.Euler(.y, angle, 0);
-            Vector3 direction = rotation * Vector3.forward;
-
-            Ray ray = new Ray(sensorPivot.position, direction);
+        for (int i = 0; i < angles.Length; i++)
+        {
+            Vector3 dir = Quaternion.Euler(0, angles[i], 0) * transform.forward;
+            Ray ray = new Ray(sensorPivot.position, dir);
             RaycastHit hit;
 
             if (Physics.Raycast(ray, out hit, maxSensorDistance))
             {
-                sensorReadings[0] = hit.distance / maxSensorDistance;
-
-                Debug.DrawRay(sensorPivot.position, direction * hit.distance, Color.red);
+                sensorReadings[i] = hit.distance / maxSensorDistance;
+                Debug.DrawRay(sensorPivot.position, dir * hit.distance, Color.red);
             }
             else
             {
-                sensorReadings[0] = 1.0f;
-                Debug.DrawRay(sensorPivot.position, direction * maxSensorDistance, Color.green);
+                sensorReadings[i] = 1.0f;
+                Debug.DrawRay(sensorPivot.position, dir * maxSensorDistance, Color.green);
             }
-        //}
+        }
     }
 
     void MoveRobot(float leftMotor, float rightMotor)
@@ -277,24 +251,10 @@ public class RobotController : MonoBehaviour
         transform.Rotate(Vector3.up, rotationSpeed * Time.deltaTime);
     }
 
-    void UpdateSensorPosition()
-    {
-        //if (Random.value < 0.01f)
-        //{
-        //    // Set target angles within range
-        //    servoXAngle = Random.Range(-servoXRange, servoXRange);
-        //    servoYAngle = Random.Range(-servoYRange, servoYRange);
-        //}
-
-        // Smoothly move servos toward target angles
-        //sensorPivot.localRotation = Quaternion.Euler(40, 50, 0);
-    }
-
     void OnTriggerEnter(Collider other)
     {
         if (other.CompareTag("Wall"))
         {
-            Debug.Log("Collision with wall");
             totalReward += collisionPenalty;
             performanceScore += collisionPenalty;
             timeSinceLastCollision = 0f;
@@ -310,22 +270,17 @@ public class RobotController : MonoBehaviour
 
     void ResetEpisode()
     {
-        // Reset robot position and rotation
-        transform.position = new Vector3(Random.Range(-30f, 30f), 2f, Random.Range(-30f, 30f));
-        transform.rotation = Quaternion.Euler(0, Random.Range(0, 360), 0);
+        Vector3 startPosition = new Vector3(Random.Range(-10, 10), 5f, Random.Range(-10, 10));
+        transform.position = startPosition;
+        transform.rotation = Quaternion.Euler(0, Random.Range(-30, 30), 0);
 
-        // Reset timers and rewards for new episode
         episodeTimer = 0f;
         timeSinceLastCollision = 0f;
         totalReward = 0f;
-
-        // Reset sensor position
-        servoXAngle = 0f;
-        servoYAngle = 0f;
     }
 
     void SaveWeights()
     {
-        nnmodel.Save(Application.dataPath + "D:\\robot\\robot_model.cool");
+        //nnmodel.Save(Application.dataPath + "D:\\robot\\robot_model.cool");
     }
 }
